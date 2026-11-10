@@ -1,0 +1,38 @@
+name: Test manifest
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    name: Install with Scoop on Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Scoop
+        shell: pwsh
+        run: |
+          Invoke-RestMethod -Uri https://get.scoop.sh -OutFile install-scoop.ps1
+          .\install-scoop.ps1 -RunAsAdmin
+          Join-Path (Resolve-Path ~).Path "scoop\shims" >> $env:GITHUB_PATH
+
+      - name: Install snow-cli from the local manifest
+        shell: pwsh
+        run: scoop install .\bucket\snow-cli.json
+
+      - name: Smoke-test both binaries
+        shell: pwsh
+        run: |
+          $expected = (Get-Content bucket\snow-cli.json | ConvertFrom-Json).version
+          foreach ($bin in 'snow-cli', 'snow-cli-ro') {
+            $out = & $bin --version
+            if ($LASTEXITCODE -ne 0) { throw "$bin --version failed" }
+            if ($out -notmatch [regex]::Escape($expected)) { throw "$bin reported '$out', expected $expected" }
+            Write-Host "$bin -> $out"
+          }
